@@ -1,0 +1,48 @@
+pipeline {
+    agent any
+
+    environment {
+        PROJECT_ID = 'pfi-tcscc-koost-nature'
+        CLUSTER_NAME = 'pfi-tcscc-koost-cluster'
+        CLUSTER_ZONE = 'asia-south1-a'
+        DEPLOYMENT_NAME = 'pfi-tcscc-koost-morning'
+        IMAGE_NAME = 'gcr.io/${PROJECT_ID}/pfi-tcscc-koost-morning'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/kookatlas/pfi-tcscc-koost-morning.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${IMAGE_NAME}:latest ."
+                }
+            }
+        }
+
+        stage('Push Image to GCR') {
+            steps {
+                script {
+                    sh "gcloud auth configure-docker"
+                    sh "docker push ${IMAGE_NAME}:latest"
+                }
+            }
+        }
+
+        stage('Deploy to GKE') {
+            steps {
+                script {
+                    sh """
+                    gcloud container clusters get-credentials ${CLUSTER_NAME} --zone ${CLUSTER_ZONE} --project ${PROJECT_ID}
+                    kubectl set image deployment/${DEPLOYMENT_NAME} ${DEPLOYMENT_NAME}=${IMAGE_NAME}:latest || \
+                    kubectl apply -f k8s/deployment.yaml
+                    """
+                }
+            }
+        }
+    }
+}
